@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>A Beautiful Life</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400&family=Inter:wght@300;400&display=swap" rel="stylesheet">
+<style>
+:root{--paper:#faf8f4;--ink:#241f1a;--soft:#5a534b;--muted:#948b80;--rule:#e6dfd3;--accent:#a9714a}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-weight:300;
+  display:flex;align-items:center;justify-content:center;padding:28px;-webkit-font-smoothing:antialiased}
+.card{width:100%;max-width:380px;text-align:center}
+.kicker{font-size:11px;letter-spacing:.34em;text-transform:uppercase;color:var(--muted);margin:0 0 18px}
+h1{font-family:Fraunces,Georgia,serif;font-weight:300;font-size:38px;line-height:1.12;margin:0 0 22px}
+.rule{width:54px;height:1px;background:var(--accent);margin:0 auto 26px;opacity:.6}
+label{display:block;font-size:13px;color:var(--soft);margin:0 0 10px}
+input{width:100%;padding:13px 14px;font-size:16px;font-family:inherit;font-weight:300;
+  color:var(--ink);background:#fff;border:1px solid var(--rule);border-radius:3px;text-align:center}
+input:focus{outline:none;border-color:var(--accent)}
+button{width:100%;margin-top:12px;padding:13px;font-size:14px;font-family:inherit;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--paper);background:var(--ink);border:0;border-radius:3px;cursor:pointer}
+button[disabled]{opacity:.55;cursor:default}
+.msg{min-height:20px;margin-top:14px;font-size:13px;color:var(--accent)}
+.foot{margin-top:30px;font-size:12px;color:var(--muted)}
+</style>
+</head><body>
+<div class="card">
+  <p class="kicker">A Photo Book</p>
+  <h1>A Beautiful<br>Life</h1>
+  <div class="rule"></div>
+  <form id="f">
+    <label for="pw">This book is private. Please enter the password.</label>
+    <input id="pw" type="password" autocomplete="current-password" autofocus>
+    <button id="go" type="submit">Open the book</button>
+  </form>
+  <div class="msg" id="msg"></div>
+  <p class="foot"></p>
+</div>
+<script>
+var ENC = "index.enc", ITER = 250000, KEY = "abl-pw";
+
+function b64(s){var r=atob(s),a=new Uint8Array(r.length);for(var i=0;i<r.length;i++)a[i]=r.charCodeAt(i);return a.buffer}
+
+async function open_(pw, quiet){
+  var raw = new Uint8Array(await (await fetch(ENC, {cache:'no-store'})).arrayBuffer());
+  var salt = raw.slice(0,16), iv = raw.slice(16,28), body = raw.slice(28);
+  var base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveKey']);
+  var key = await crypto.subtle.deriveKey(
+    {name:'PBKDF2', salt:salt, iterations:ITER, hash:'SHA-256'},
+    base, {name:'AES-GCM', length:256}, false, ['decrypt']);
+  // A wrong password fails here, on the authentication tag - never a half-decrypted page.
+  var plain = await crypto.subtle.decrypt({name:'AES-GCM', iv:iv}, key, body);
+  try { sessionStorage.setItem(KEY, pw); } catch(e){}
+  var html = new TextDecoder().decode(plain);
+  document.open(); document.write(html); document.close();
+}
+
+document.getElementById('f').addEventListener('submit', async function(e){
+  e.preventDefault();
+  var pw = document.getElementById('pw').value, msg = document.getElementById('msg'),
+      go = document.getElementById('go');
+  if(!pw) return;
+  go.disabled = true; msg.textContent = 'Opening\u2026';
+  try { await open_(pw); }
+  catch(err){
+    msg.textContent = 'That password does not open this book.';
+    go.disabled = false;
+    document.getElementById('pw').value = ''; document.getElementById('pw').focus();
+  }
+});
+
+// Carried from page to page for the length of the visit, so the password is typed once.
+(async function(){
+  var saved = null; try { saved = sessionStorage.getItem(KEY); } catch(e){}
+  if(saved){ try { await open_(saved, true); } catch(e){ try{ sessionStorage.removeItem(KEY); }catch(_){} } }
+})();
+</script>
+</body></html>
